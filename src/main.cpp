@@ -1,117 +1,147 @@
-#include <M5Unified.h>  
+/**
+ * Chronomètre sur le M5Stack
+ * Le bouton A (le plus à gauche) permet le contrôle :
+ *		- Appuie court : Start / Pause
+ *		- Appuie long (si en pause) : Remise à zéro
+ * Version de base sur laquelle les étudiants vont ajouter des fonctionnalités
+ * 
+ * Consulter le fichier readme.md
+ */
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// 3. Utilisation des boutons 
+//   3.2 chronomètre
 
-// put function declarations here:
-int myFunction(int, int);
+#include <M5Unified.h>
+#include "Chronometre.h"
+
+//#define DEBUG // Décommenter pour avoir des infos de debuggage sur le moniteur série (115200 bauds)
+#define BAUD_RATE 115200
+
+#define INTENSITE_VIBREUR 255
+#define DELAY_SHORT_VIBRATION  80
+#define DELAY_LONG_VIBRATION  240
+
+#define CHRONO_FONT_SIZE  5
+
+const char AppTitle[] = "Chronometre";
+
+// Les 3 états du chronomètre
+typedef enum {STOP, START, PAUSE} EtatChrono_t;
+
+// Les 3 couleurs de l'affichage
+int couleurs[5] = {TFT_YELLOW, TFT_RED, TFT_BLUE, TFT_GREEN, TFT_WHITE};
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// 3. Utilisation des boutons (chronomètre)
+
+// SETUP ******************************************************************
 
 void setup(void)
 {
-  M5.begin();
+  #ifdef DEBUG
+    auto cfg = M5.config();  // Assign a structure for initializing M5Stack
+    // If config is to be set, set it here
+    // Example.
+    // cfg.external_spk = true;
+    cfg.serial_baudrate = BAUD_RATE;
+    M5.begin(cfg);    // Init M5Core 2 avec serial port pour debug
+    M5.Log.setLogLevel(m5::log_target_t::log_target_serial, ESP_LOG_INFO);  
+  #else
+    M5.begin();        // Init M5Core 2
+  #endif
 
-  Serial.begin(115200);
-  M5.Log.setLogLevel(m5::log_target_t::log_target_serial, ESP_LOG_INFO);
+  // Affichage "Chronometre" en haut de l'écran
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.setTextColor(TFT_YELLOW);
+  M5.Lcd.setCursor((M5.Lcd.width() - M5.Lcd.textWidth(AppTitle)) / 2, 0); // Calcul pour centrer le texte et positionne le curseur
+  M5.Lcd.print(AppTitle);
 
-  /// For models with EPD : refresh control
-  M5.Display.setEpdMode(epd_mode_t::epd_fastest); // fastest but very-low quality.
+  // Affichage de la légende du bouton A (BtnA)
+  M5.Lcd.setTextSize(1);
+  M5.Lcd.setCursor(5, M5.Lcd.height() - M5.Lcd.fontHeight()); // Calcul pour afficher tout en bas de l'écran
+  M5.Lcd.setTextColor(TFT_YELLOW);
+  M5.Lcd.print("Start-Stop/Reset");
 
-  if (M5.Display.width() < M5.Display.height())
-  { /// Landscape mode.
-    M5.Display.setRotation(M5.Display.getRotation() ^ 1);
-  }
+  #ifdef DEBUG  
+    M5_LOGI("*** Fin setup ***");
+  #endif
 }
 
-void loop(void)
-{
-  M5.delay(1);
+// LOOP *******************************************************************
+void loop() {
+  M5Canvas canvasChrono(&M5.Display);      // sprite d'affichage du chronomètre
 
-  M5.update();
-//------------------- Button test
-/*
-/// List of available buttons:
-  M5Stack BASIC/GRAY/GO/FIRE:  BtnA,BtnB,BtnC
-  M5Stack Core2:               BtnA,BtnB,BtnC,BtnPWR
-  M5Stick C/CPlus:             BtnA,BtnB,     BtnPWR
-  M5Stick CoreInk:             BtnA,BtnB,BtnC,BtnPWR,BtnEXT
-  M5Paper:                     BtnA,BtnB,BtnC
-  M5Station:                   BtnA,BtnB,BtnC,BtnPWR
-  M5Tough:                                    BtnPWR
-  M5Atom M5AtomU:              BtnA
-  M5Stamp Pico/C3/C3U:         BtnA
-*/
+  EtatChrono_t etatCourant = STOP;  // Le chronomètre démarre dans l'état STOP
+  unsigned long startTime;
+  unsigned long valChrono = 0;    // Etat STOP => Chrono = 0
+  unsigned long lastDisplay = 0;
+  uint cptCouleurs = 1;
 
-  static constexpr const int colors[] = { TFT_WHITE, TFT_CYAN, TFT_RED, TFT_YELLOW, TFT_BLUE, TFT_GREEN };
-  static constexpr const char* const names[] = { "none", "wasHold", "wasClicked", "wasPressed", "wasReleased", "wasDeciedCount" };
+  // Préparation du sprite d'affichage du chronomètre
+  M5.Lcd.setTextSize(CHRONO_FONT_SIZE);     // Set the font size
+  canvasChrono.createSprite(M5.Lcd.width(), M5.Lcd.fontHeight());
+  canvasChrono.setTextColor(TFT_YELLOW);  // Set the font color to yellow
+  canvasChrono.setTextSize(CHRONO_FONT_SIZE);     // Set the font size
 
-  int w = M5.Display.width() / 5;
-  int h = M5.Display.height();
-  M5.Display.startWrite();
+  while(1) {
 
-  /// BtnPWR: "wasClicked"/"wasHold"  can be use.
-  /// BtnPWR of CoreInk: "isPressed"/"wasPressed"/"isReleased"/"wasReleased"/"wasClicked"/"wasHold"/"isHolding"  can be use.
-  int state = M5.BtnPWR.wasHold() ? 1
-            : M5.BtnPWR.wasClicked() ? 2
-            : M5.BtnPWR.wasPressed() ? 3
-            : M5.BtnPWR.wasReleased() ? 4
-            : M5.BtnPWR.wasDecideClickCount() ? 5
-            : 0;
+    // code exécuté quel que soit l'état
+    if(millis() > lastDisplay + 100) {  // Affichage
+      lastDisplay = millis();
+      
+      #ifdef DEBUG 
+        M5_LOGI("etatCourant : %d\n", etatCourant);
+      #endif
 
-  if (state)
-  {
-    M5_LOGI("BtnPWR:%s  count:%d", names[state], M5.BtnPWR.getClickCount());
-    M5.Display.fillRect(w*0, 0, w-1, h, colors[state]);
-  }
+      displayChrono(&canvasChrono, milisToTime(valChrono, true).c_str());
+    }
+    
+    M5.update();  // Pour lecture des boutons
 
-  /// BtnA,BtnB,BtnC,BtnEXT: "isPressed"/"wasPressed"/"isReleased"/"wasReleased"/"wasClicked"/"wasHold"/"isHolding"  can be use.
-  state = M5.BtnA.wasHold() ? 1
-        : M5.BtnA.wasClicked() ? 2
-        : M5.BtnA.wasPressed() ? 3
-        : M5.BtnA.wasReleased() ? 4
-        : M5.BtnA.wasDecideClickCount() ? 5
-        : 0;
-  if (state)
-  {
-    M5_LOGI("BtnA:%s  count:%d", names[state], M5.BtnA.getClickCount());
-    M5.Display.fillRect(w*1, 0, w-1, h, colors[state]);
-  }
+    // Code exécuté selon l'état courant
+    switch(etatCourant) {
+      case STOP : // STOP State
+        if(M5.BtnA.wasClicked()) { // Switch to START state
+          startTime = millis();
+          shortVibration(INTENSITE_VIBREUR, DELAY_SHORT_VIBRATION);
+          etatCourant = START;
+        }
+        if(M5.BtnB.wasClicked()) {
+          canvasChrono.setTextColor(couleurs[cptCouleurs]);
+          cptCouleurs += 1;
+          if(cptCouleurs == 5){
+            cptCouleurs = 1;
+          }
+        }
+        break;
 
-  state = M5.BtnB.wasHold() ? 1
-        : M5.BtnB.wasClicked() ? 2
-        : M5.BtnB.wasPressed() ? 3
-        : M5.BtnB.wasReleased() ? 4
-        : M5.BtnB.wasDecideClickCount() ? 5
-        : 0;
-  if (state)
-  {
-    M5_LOGI("BtnB:%s  count:%d", names[state], M5.BtnB.getClickCount());
-    M5.Display.fillRect(w*2, 0, w-1, h, colors[state]);
-  }
+      case START : // START State
+        valChrono = millis() - startTime;
 
-  state = M5.BtnC.wasHold() ? 1
-        : M5.BtnC.wasClicked() ? 2
-        : M5.BtnC.wasPressed() ? 3
-        : M5.BtnC.wasReleased() ? 4
-        : M5.BtnC.wasDecideClickCount() ? 5
-        : 0;
-  if (state)
-  {
-    M5_LOGI("BtnC:%s  count:%d", names[state], M5.BtnC.getClickCount());
-    M5.Display.fillRect(w*3, 0, w-1, h, colors[state]);
-  }
+        if(M5.BtnA.wasClicked()) { // Switch to PAUSE state
+          etatCourant = PAUSE;
+          shortVibration(INTENSITE_VIBREUR, DELAY_SHORT_VIBRATION);
+          startTime = millis() - startTime;
+        }
+        break;
 
-  state = M5.BtnEXT.wasHold() ? 1
-        : M5.BtnEXT.wasClicked() ? 2
-        : M5.BtnEXT.wasPressed() ? 3
-        : M5.BtnEXT.wasReleased() ? 4
-        : M5.BtnEXT.wasDecideClickCount() ? 5
-        : 0;
-  if (state)
-  {
-    M5_LOGI("BtnEXT:%s  count:%d", names[state], M5.BtnEXT.getClickCount());
-    M5.Display.fillRect(w*4, 0, w-1, h, colors[state]);
-  }
-  M5.Display.endWrite();
-}
+      case PAUSE : // PAUSE State
+        if(M5.BtnA.wasClicked()) { // Switch to START state
+          startTime = millis() - startTime;
+          shortVibration(INTENSITE_VIBREUR, DELAY_SHORT_VIBRATION);
+          etatCourant = START;
+        }
+        if(M5.BtnA.wasHold()) { // Switch to STOP state
+          etatCourant = STOP;
+          valChrono = 0;  // Remise à zéro du chrono
+          shortVibration(INTENSITE_VIBREUR, DELAY_LONG_VIBRATION);
+          displayChrono(&canvasChrono, milisToTime(valChrono, true).c_str());
+        }              
+        break;
 
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
-}
+    } // !switch
+
+  } // !while
+
+} // !loop
