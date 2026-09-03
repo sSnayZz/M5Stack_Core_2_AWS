@@ -28,10 +28,6 @@ const char AppTitle[] = "Chronometre";
 // Les 3 états du chronomètre
 typedef enum {STOP, START, PAUSE} EtatChrono_t;
 
-// Les 3 couleurs de l'affichage
-int couleurs[5] = {TFT_YELLOW, TFT_RED, TFT_BLUE, TFT_GREEN, TFT_WHITE};
-
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // 3. Utilisation des boutons (chronomètre)
 
@@ -77,6 +73,8 @@ void loop() {
   unsigned long valChrono = 0;    // Etat STOP => Chrono = 0
   unsigned long lastDisplay = 0;
   uint cptCouleurs = 1;
+  int couleurs[5] = {TFT_YELLOW, TFT_RED, TFT_BLUE, TFT_GREEN, TFT_WHITE};
+  int aff_dixieme = 1;
 
   // Préparation du sprite d'affichage du chronomètre
   M5.Lcd.setTextSize(CHRONO_FONT_SIZE);     // Set the font size
@@ -94,7 +92,7 @@ void loop() {
         M5_LOGI("etatCourant : %d\n", etatCourant);
       #endif
 
-      displayChrono(&canvasChrono, milisToTime(valChrono, true).c_str());
+      displayChrono(&canvasChrono, milisToTime(valChrono, aff_dixieme).c_str());
     }
     
     M5.update();  // Pour lecture des boutons
@@ -107,13 +105,16 @@ void loop() {
           shortVibration(INTENSITE_VIBREUR, DELAY_SHORT_VIBRATION);
           etatCourant = START;
         }
+
         if(M5.BtnB.wasClicked()) {
           canvasChrono.setTextColor(couleurs[cptCouleurs]);
-          cptCouleurs += 1;
-          if(cptCouleurs == 5){
-            cptCouleurs = 1;
-          }
+          cptCouleurs = (cptCouleurs + 1) % 5;
         }
+
+        if(M5.BtnC.wasClicked()) {
+          aff_dixieme = !aff_dixieme;
+        }
+
         break;
 
       case START : // START State
