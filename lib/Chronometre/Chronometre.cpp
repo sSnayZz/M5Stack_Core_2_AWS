@@ -38,11 +38,14 @@ std::string milisToTime(uint32_t ms, bool displayDs = false) {
  * @param chrono : chaine de caractères à afficher
 */
 void displayChrono(M5Canvas * refreshZone, String chrono) {
-      refreshZone->fillSprite(TFT_BLACK);
       refreshZone->setCursor(10, 0);
       refreshZone->print(chrono);  
 
       refreshZone->pushSprite(0, 85);
+}
+
+void bgColor(M5Canvas * refreshzone, int color) {
+      refreshzone->fillSprite(color);
 }
 
 /**************************************************************************

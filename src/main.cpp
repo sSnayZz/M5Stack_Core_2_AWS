@@ -72,9 +72,11 @@ void loop() {
   unsigned long startTime;
   unsigned long valChrono = 0;    // Etat STOP => Chrono = 0
   unsigned long lastDisplay = 0;
-  uint cptCouleurs = 1;
-  int couleurs[5] = {TFT_YELLOW, TFT_RED, TFT_BLUE, TFT_GREEN, TFT_WHITE};
-  int aff_dixieme = 1;
+  uint cpt_aff_colors = 1;
+  int aff_colors[5] = {TFT_YELLOW, TFT_RED, TFT_BLUE, TFT_GREEN, TFT_WHITE};
+  bool state_aff_dixieme = 1;
+  int bw_colors[2] = {TFT_BLACK, TFT_WHITE};
+  bool state_bg_colors = 1;
 
   // Préparation du sprite d'affichage du chronomètre
   M5.Lcd.setTextSize(CHRONO_FONT_SIZE);     // Set the font size
@@ -83,18 +85,23 @@ void loop() {
   canvasChrono.setTextSize(CHRONO_FONT_SIZE);     // Set the font size
 
   while(1) {
-
     // code exécuté quel que soit l'état
     if(millis() > lastDisplay + 100) {  // Affichage
       lastDisplay = millis();
-      
       #ifdef DEBUG 
         M5_LOGI("etatCourant : %d\n", etatCourant);
       #endif
-
-      displayChrono(&canvasChrono, milisToTime(valChrono, aff_dixieme).c_str());
     }
-    
+
+    displayChrono(&canvasChrono, milisToTime(valChrono, state_aff_dixieme).c_str());
+    bgColor(&canvasChrono, bw_colors[!state_bg_colors]);
+
+    if(M5.BtnB.wasHold()) {
+        bgColor(&canvasChrono, bw_colors[state_bg_colors]);
+        state_bg_colors = !state_bg_colors;
+        canvasChrono.setTextColor(bw_colors[state_bg_colors]);
+      }
+  
     M5.update();  // Pour lecture des boutons
 
     // Code exécuté selon l'état courant
@@ -107,12 +114,12 @@ void loop() {
         }
 
         if(M5.BtnB.wasClicked()) {
-          canvasChrono.setTextColor(couleurs[cptCouleurs]);
-          cptCouleurs = (cptCouleurs + 1) % 5;
+          canvasChrono.setTextColor(aff_colors[cpt_aff_colors]);
+          cpt_aff_colors = (cpt_aff_colors + 1) % 5;
         }
 
         if(M5.BtnC.wasClicked()) {
-          aff_dixieme = !aff_dixieme;
+          state_aff_dixieme = !state_aff_dixieme;
         }
 
         break;
