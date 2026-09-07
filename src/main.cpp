@@ -77,6 +77,7 @@ void loop() {
   bool state_aff_dixieme = 1;
   int bw_colors[2] = {TFT_BLACK, TFT_WHITE};
   bool state_bg_colors = 1;
+  //test
 
   // Préparation du sprite d'affichage du chronomètre
   M5.Lcd.setTextSize(CHRONO_FONT_SIZE);     // Set the font size
